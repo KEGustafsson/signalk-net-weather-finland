@@ -35,8 +35,7 @@ module.exports = function createPlugin(app) {
   let updateWeather
   let distToStation = []
 
-  let interval_id1;
-  let interval_id2;
+  let interval;
   let initStatus = false;
 
   plugin.start = function (options, restartPlugin) {
@@ -44,11 +43,11 @@ module.exports = function createPlugin(app) {
     numberOfStations = options.numberOfStations
 
     app.debug('Plugin started');
-    interval_id1 = setInterval(readMeteo, (10000));
+    interval = setInterval(readMeteo, (10000));
   };
 
   plugin.stop = function stop() {
-    clearInterval(interval_id2);
+    clearInterval(interval);
     initStatus = false
     distToStation = []
     app.debug('NetWeather Stopped');
@@ -74,8 +73,8 @@ module.exports = function createPlugin(app) {
   };
 
   function clear() {
-    clearInterval(interval_id1);
-    interval_id2 = setInterval(readMeteo, (updateWeather * 60000));
+    clearInterval(interval);
+    interval = setInterval(readMeteo, (updateWeather * 60000));
     initStatus = true;
   };
 
