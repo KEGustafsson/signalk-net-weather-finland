@@ -22,9 +22,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-const { error } = require("console");
-
-
 module.exports = function createPlugin(app) {
   const plugin = {};
   plugin.id = 'signalk-net-weather-finland';
