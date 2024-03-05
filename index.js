@@ -22,6 +22,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+const { error } = require("console");
+
 
 module.exports = function createPlugin(app) {
   const plugin = {};
@@ -166,7 +168,7 @@ module.exports = function createPlugin(app) {
       distToStation = distToStation.sort((a, b) => a[4] - b[4]).slice(0, numberOfStations)
       app.debug(distToStation)
       distToStation.forEach(([stationName, fmisid, lat, lon, distance]) => {
-        const url = `https://tuuleeko.fi/fmiproxy/nearest-observations?lat=${lat}&lon=${lon}&latest=true&marineOnly=true`
+        const url = `https://tuuleeko.fi/fmiproxy/nearest-observations?lat=${lat}&lon=${lon}&latest=true`
         fetch(url, { method: 'GET' })
           .then((res) => {
             return res.json()
