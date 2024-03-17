@@ -1,13 +1,14 @@
 {
   "name": "signalk-net-weather-finland",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Finnish Meteorological Institute coastal weather station data for Signal K",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
-    "signalk-node-server-plugin"
+    "signalk-node-server-plugin",
+    "signalk-category-weather"
   ],
   "repository": "https://github.com/KEGustafsson/signalk-net-weather-finland",
   "author": "Karl-Erik Gustafsson",
