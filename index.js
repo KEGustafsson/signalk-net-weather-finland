@@ -33,23 +33,20 @@ module.exports = function createPlugin(app) {
   let numberOfStations
   let updateWeather
   let distToStation = []
+  let interval
+  let intervalTime = 10000
 
-  let interval;
-  let initStatus = false;
-
-  plugin.start = function (options, restartPlugin) {
+  plugin.start = function (options) {
+    app.debug('Signal K Net Weather Finland started');
     updateWeather = options.updateWeather
     numberOfStations = options.numberOfStations
-
-    app.debug('Plugin started');
-    interval = setInterval(readMeteo, (10000));
+    interval = setInterval(readMeteo, (intervalTime));
   };
 
   plugin.stop = function stop() {
     clearInterval(interval);
-    initStatus = false
     distToStation = []
-    app.debug('NetWeather Stopped');
+    app.debug('Signal K Net Weather Finland stopped');
   };
 
   plugin.schema = {
@@ -73,8 +70,8 @@ module.exports = function createPlugin(app) {
 
   function clear() {
     clearInterval(interval);
-    interval = setInterval(readMeteo, (updateWeather * 60000));
-    initStatus = true;
+    intervalTime = updateWeather * 60000;
+    interval = setInterval(readMeteo, (intervalTime));
   };
 
   function degrees_to_radians(degrees) {
@@ -153,8 +150,8 @@ module.exports = function createPlugin(app) {
     const ownLat = app.getSelfPath('navigation.position.value.latitude');
 
     if (ownLon && ownLat) {
-      if (initStatus === false) {
-        setTimeout(clear, 1000);
+      if (intervalTime !== updateWeather * 60000) {
+        clear();
       }
       distToStation = []
       const ownLocation = { latitude: ownLat, longitude: ownLon }
@@ -172,7 +169,7 @@ module.exports = function createPlugin(app) {
           })
           .then((json) => {
             app.debug(JSON.stringify(json));
-            var name = json.station .name;
+            var name = json.station.name;
             var latitude = json.station.latitude;
             var longitude = json.station.longitude;
             var geoid = json.station.geoid;
