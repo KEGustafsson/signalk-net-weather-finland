@@ -37,17 +37,16 @@ module.exports = function createPlugin(app) {
   let intervalTime = 10000
 
   plugin.start = function (options) {
+    app.debug('Signal K Net Weather Finland started');
     updateWeather = options.updateWeather
     numberOfStations = options.numberOfStations
-
-    app.debug('Plugin started');
     interval = setInterval(readMeteo, (intervalTime));
   };
 
   plugin.stop = function stop() {
     clearInterval(interval);
     distToStation = []
-    app.debug('NetWeather Stopped');
+    app.debug('Signal K Net Weather Finland stopped');
   };
 
   plugin.schema = {
@@ -152,7 +151,6 @@ module.exports = function createPlugin(app) {
 
     if (ownLon && ownLat) {
       if (intervalTime !== updateWeather * 60000) {
-        app.debug('Interval time: ' + intervalTime/1000 + ' seconds');
         clear();
       }
       distToStation = []
@@ -171,7 +169,7 @@ module.exports = function createPlugin(app) {
           })
           .then((json) => {
             app.debug(JSON.stringify(json));
-            var name = json.station .name;
+            var name = json.station.name;
             var latitude = json.station.latitude;
             var longitude = json.station.longitude;
             var geoid = json.station.geoid;
