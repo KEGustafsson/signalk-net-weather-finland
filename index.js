@@ -41,6 +41,7 @@ module.exports = function createPlugin(app) {
     updateWeather = options.updateWeather
     numberOfStations = options.numberOfStations
     interval = setInterval(readMeteo, (intervalTime));
+    readMeteo();
   };
 
   plugin.stop = function stop() {
