@@ -32,7 +32,6 @@ module.exports = function createPlugin(app) {
   const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
   let numberOfStations
   let updateWeather
-  let distToStation = []
   let interval
   let intervalTime = 10000
 
@@ -46,7 +45,6 @@ module.exports = function createPlugin(app) {
 
   plugin.stop = function stop() {
     clearInterval(interval);
-    distToStation = []
     app.debug('Signal K Net Weather Finland stopped');
   };
 
@@ -154,7 +152,7 @@ module.exports = function createPlugin(app) {
       if (intervalTime !== updateWeather * 60000) {
         clear();
       }
-      distToStation = []
+      let distToStation = []
       const ownLocation = { latitude: ownLat, longitude: ownLon }
       stations.forEach(([longName, shortName, fmisid, lat, lon]) => {
         const distance = haversine(ownLocation, { latitude: lat, longitude: lon })
