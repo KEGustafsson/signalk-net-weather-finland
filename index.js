@@ -32,7 +32,6 @@ module.exports = function createPlugin(app) {
   const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
   let numberOfStations
   let updateWeather
-  let distToStation = []
   let interval
   let intervalTime = 10000
 
@@ -41,11 +40,11 @@ module.exports = function createPlugin(app) {
     updateWeather = options.updateWeather
     numberOfStations = options.numberOfStations
     interval = setInterval(readMeteo, (intervalTime));
+    readMeteo();
   };
 
   plugin.stop = function stop() {
     clearInterval(interval);
-    distToStation = []
     app.debug('Signal K Net Weather Finland stopped');
   };
 
@@ -153,7 +152,7 @@ module.exports = function createPlugin(app) {
       if (intervalTime !== updateWeather * 60000) {
         clear();
       }
-      distToStation = []
+      let distToStation = []
       const ownLocation = { latitude: ownLat, longitude: ownLon }
       stations.forEach(([longName, shortName, fmisid, lat, lon]) => {
         const distance = haversine(ownLocation, { latitude: lat, longitude: lon })
@@ -232,6 +231,8 @@ module.exports = function createPlugin(app) {
             })
           })
       })
+    } else {
+      debug("No own position, can not fetch nearest stations' data");
     }
   };
   return plugin;
