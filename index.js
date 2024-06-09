@@ -231,6 +231,8 @@ module.exports = function createPlugin(app) {
             })
           })
       })
+    } else {
+      debug("No own position, can not fetch nearest stations' data");
     }
   };
   return plugin;
