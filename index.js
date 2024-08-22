@@ -145,95 +145,97 @@ module.exports = function createPlugin(app) {
   ]
 
   readMeteo = function readMeteo() {
-    const ownLon = app.getSelfPath('navigation.position.value.longitude');
-    const ownLat = app.getSelfPath('navigation.position.value.latitude');
-
-    if (ownLon && ownLat) {
-      if (intervalTime !== updateWeather * 60000) {
-        clear();
-      }
-      let distToStation = []
-      const ownLocation = { latitude: ownLat, longitude: ownLon }
-      stations.forEach(([longName, shortName, fmisid, lat, lon]) => {
-        const distance = haversine(ownLocation, { latitude: lat, longitude: lon })
-        distToStation.push([longName, shortName, fmisid, lat, lon, distance])
-      })
-      distToStation = distToStation.sort((a, b) => a[5] - b[5]).slice(0, numberOfStations)
-      app.debug(distToStation)
-      distToStation.forEach(([longName, shortName, fmisid, lat, lon, distance]) => {
-        const url = `https://tuuleeko.fi/fmiproxy/nearest-observations?lat=${lat}&lon=${lon}&latest=true`
-        fetch(url, { method: 'GET' })
-          .then((res) => {
-            return res.json()
-          })
-          .then((json) => {
-            app.debug(JSON.stringify(json));
-            var name = json.station.name;
-            var latitude = json.station.latitude;
-            var longitude = json.station.longitude;
-            var geoid = json.station.geoid;
-            var mmsi = String(Math.abs(geoid)).padStart(9, '0')
-            var temperature = C_to_K(json.observations.temperature);
-            var windSpeed = json.observations.windSpeedMs;
-            var windGust = json.observations.windGustMs;
-            var windDir = degrees_to_radians(json.observations.windDir);
-            var pressure = json.observations.pressureMbar * 100;
-            var date = json.observations.time;
-            app.handleMessage('signalk-net-weather-finland', {
-              context: 'meteo.urn:mrn:imo:mmsi:' + mmsi,
-              updates: [
-                {
-                  values: [
-                    {
-                      path: 'environment.station.geoid',
-                      value: geoid
-                    },
-                    {
-                      path: 'navigation.position',
-                      value: { longitude, latitude }
-                    },
-                    {
-                      path: '',
-                      value: {
-                        name,
-                        shortName
-                      }
-                    },
-                    {
-                      path: 'environment.outside.temperature',
-                      value: temperature
-                    },
-                    {
-                      path: 'environment.wind.averageSpeed',
-                      value: windSpeed
-                    },
-                    {
-                      path: 'environment.wind.gust',
-                      value: windGust
-                    },
-                    {
-                      path: 'environment.wind.directionTrue',
-                      value: windDir
-                    },
-                    {
-                      path: 'environment.outside.pressure',
-                      value: pressure
-                    },
-                    {
-                      path: 'environment.date',
-                      value: date
-                    },
-                  ],
-                  source: { label: plugin.id },
-                  timestamp: (new Date().toISOString()),
-                }
-              ]
+    try {
+      const ownLon = app.getSelfPath('navigation.position.value.longitude');
+      const ownLat = app.getSelfPath('navigation.position.value.latitude');
+  
+      if (ownLon && ownLat) {
+        if (intervalTime !== updateWeather * 60000) {
+          clear();
+        }
+        let distToStation = []
+        const ownLocation = { latitude: ownLat, longitude: ownLon }
+        stations.forEach(([longName, shortName, fmisid, lat, lon]) => {
+          const distance = haversine(ownLocation, { latitude: lat, longitude: lon })
+          distToStation.push([longName, shortName, fmisid, lat, lon, distance])
+        })
+        distToStation = distToStation.sort((a, b) => a[5] - b[5]).slice(0, numberOfStations)
+        app.debug(distToStation)
+        distToStation.forEach(([longName, shortName, fmisid, lat, lon, distance]) => {
+          const url = `https://tuuleeko.fi/fmiproxy/nearest-observations?lat=${lat}&lon=${lon}&latest=true`
+          fetch(url, { method: 'GET' })
+            .then((res) => {
+              return res.json()
             })
-          })
-      })
-    } else {
-      app.debug("No own position, can not fetch nearest stations' data");
-    }
+            .then((json) => {
+              app.debug(JSON.stringify(json));
+              var name = json.station.name;
+              var latitude = json.station.latitude;
+              var longitude = json.station.longitude;
+              var geoid = json.station.geoid;
+              var mmsi = String(Math.abs(geoid)).padStart(9, '0')
+              var temperature = C_to_K(json.observations.temperature);
+              var windSpeed = json.observations.windSpeedMs;
+              var windGust = json.observations.windGustMs;
+              var windDir = degrees_to_radians(json.observations.windDir);
+              var pressure = json.observations.pressureMbar * 100;
+              var date = json.observations.time;
+              app.handleMessage('signalk-net-weather-finland', {
+                context: 'meteo.urn:mrn:imo:mmsi:' + mmsi,
+                updates: [
+                  {
+                    values: [
+                      {
+                        path: 'environment.station.geoid',
+                        value: geoid
+                      },
+                      {
+                        path: 'navigation.position',
+                        value: { longitude, latitude }
+                      },
+                      {
+                        path: '',
+                        value: {
+                          name,
+                          shortName
+                        }
+                      },
+                      {
+                        path: 'environment.outside.temperature',
+                        value: temperature
+                      },
+                      {
+                        path: 'environment.wind.averageSpeed',
+                        value: windSpeed
+                      },
+                      {
+                        path: 'environment.wind.gust',
+                        value: windGust
+                      },
+                      {
+                        path: 'environment.wind.directionTrue',
+                        value: windDir
+                      },
+                      {
+                        path: 'environment.outside.pressure',
+                        value: pressure
+                      },
+                      {
+                        path: 'environment.date',
+                        value: date
+                      },
+                    ],
+                    source: { label: plugin.id },
+                    timestamp: (new Date().toISOString()),
+                  }
+                ]
+              })
+            })
+        })
+      } else {
+        app.debug("No own position, can not fetch nearest stations' data");
+      }
+    } catch (error) {}
   };
   return plugin;
 }
