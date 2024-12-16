@@ -1,6 +1,6 @@
 {
   "name": "signalk-net-weather-finland",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Finnish Meteorological Institute coastal weather station data for Signal K",
   "main": "index.js",
   "scripts": {

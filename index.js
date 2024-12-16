@@ -169,7 +169,7 @@ module.exports = function createPlugin(app) {
         distToStation.forEach(([longName, shortName, fmisid, lat, lon, distance]) => {
           const url = `https://tuuleeko.fi/fmiproxy/nearest-observations?lat=${lat}&lon=${lon}&latest=true`;
 
-          fetch(url)
+          fetch(url, { method: 'GET' })
             .then((res) => {
               if (!res.ok) {
                 throw new Error(`HTTP error! Status: ${res.status}`);
@@ -179,8 +179,6 @@ module.exports = function createPlugin(app) {
             .then((json) => {
               try {
                 app.debug(JSON.stringify(json));
-                const json = JSON.parse(json);
-
                 const name = json.station.name;
                 const latitude = json.station.latitude;
                 const longitude = json.station.longitude;
