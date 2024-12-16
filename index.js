@@ -215,8 +215,7 @@ module.exports = function createPlugin(app) {
                 console.error('Failed to parse JSON response', parseErr);
               }
             })
-            .catch((error) => {
-              console.error(`Failed to fetch data from ${url}`, error);
+            .catch(() => {
             });
         });
       } else {
