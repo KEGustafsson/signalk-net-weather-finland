@@ -28,18 +28,18 @@ module.exports = function createPlugin(app) {
   plugin.name = 'Signal K Net Weather Finland';
   plugin.description = 'Finnish Meteorological Institute coastal weather station data for Signal K';
 
-  const haversine = require("haversine")
+  const haversine = require('haversine');
   const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
-  let numberOfStations
-  let updateWeather
-  let interval
-  let intervalTime = 10000
+  let numberOfStations;
+  let updateWeather;
+  let interval;
+  let intervalTime = 10000;
 
   plugin.start = function (options) {
     app.debug('Signal K Net Weather Finland started');
-    updateWeather = options.updateWeather
-    numberOfStations = options.numberOfStations
-    interval = setInterval(readMeteo, (intervalTime));
+    updateWeather = options.updateWeather;
+    numberOfStations = options.numberOfStations;
+    interval = setInterval(readMeteo, intervalTime);
     readMeteo();
   };
 
@@ -70,11 +70,11 @@ module.exports = function createPlugin(app) {
   function clear() {
     clearInterval(interval);
     intervalTime = updateWeather * 60000;
-    interval = setInterval(readMeteo, (intervalTime));
-  };
+    interval = setInterval(readMeteo, intervalTime);
+  }
 
   function degrees_to_radians(degrees) {
-    var pi = Math.PI;
+    const pi = Math.PI;
     return degrees * (pi / 180);
   }
 
@@ -144,98 +144,90 @@ module.exports = function createPlugin(app) {
     ["Inari Seitalaassa", "Seitalaassa", 129963, 69.05, 27.76]
   ]
 
-  readMeteo = function readMeteo() {
+  const readMeteo = function readMeteo() {
     try {
       const ownLon = app.getSelfPath('navigation.position.value.longitude');
       const ownLat = app.getSelfPath('navigation.position.value.latitude');
-  
+
       if (ownLon && ownLat) {
         if (intervalTime !== updateWeather * 60000) {
           clear();
         }
-        let distToStation = []
-        const ownLocation = { latitude: ownLat, longitude: ownLon }
+
+        let distToStation = [];
+        const ownLocation = { latitude: ownLat, longitude: ownLon };
+
         stations.forEach(([longName, shortName, fmisid, lat, lon]) => {
-          const distance = haversine(ownLocation, { latitude: lat, longitude: lon })
-          distToStation.push([longName, shortName, fmisid, lat, lon, distance])
-        })
-        distToStation = distToStation.sort((a, b) => a[5] - b[5]).slice(0, numberOfStations)
-        app.debug(distToStation)
+          const distance = haversine(ownLocation, { latitude: lat, longitude: lon });
+          distToStation.push([longName, shortName, fmisid, lat, lon, distance]);
+        });
+
+        distToStation = distToStation.sort((a, b) => a[5] - b[5]).slice(0, numberOfStations);
+
+        app.debug(distToStation);
+
         distToStation.forEach(([longName, shortName, fmisid, lat, lon, distance]) => {
-          const url = `https://tuuleeko.fi/fmiproxy/nearest-observations?lat=${lat}&lon=${lon}&latest=true`
-          fetch(url, { method: 'GET' })
+          const url = `https://tuuleeko.fi/fmiproxy/nearest-observations?lat=${lat}&lon=${lon}&latest=true`;
+
+          fetch(url)
             .then((res) => {
-              return res.json()
+              if (!res.ok) {
+                throw new Error(`HTTP error! Status: ${res.status}`);
+              }
+              return res.json();
             })
             .then((json) => {
-              app.debug(JSON.stringify(json));
-              var name = json.station.name;
-              var latitude = json.station.latitude;
-              var longitude = json.station.longitude;
-              var geoid = json.station.geoid;
-              var mmsi = String(Math.abs(geoid)).padStart(9, '0')
-              var temperature = C_to_K(json.observations.temperature);
-              var windSpeed = json.observations.windSpeedMs;
-              var windGust = json.observations.windGustMs;
-              var windDir = degrees_to_radians(json.observations.windDir);
-              var pressure = json.observations.pressureMbar * 100;
-              var date = json.observations.time;
-              app.handleMessage('signalk-net-weather-finland', {
-                context: 'meteo.urn:mrn:imo:mmsi:' + mmsi,
-                updates: [
-                  {
-                    values: [
-                      {
-                        path: 'environment.station.geoid',
-                        value: geoid
-                      },
-                      {
-                        path: 'navigation.position',
-                        value: { longitude, latitude }
-                      },
-                      {
-                        path: '',
-                        value: {
-                          name,
-                          shortName
-                        }
-                      },
-                      {
-                        path: 'environment.outside.temperature',
-                        value: temperature
-                      },
-                      {
-                        path: 'environment.wind.averageSpeed',
-                        value: windSpeed
-                      },
-                      {
-                        path: 'environment.wind.gust',
-                        value: windGust
-                      },
-                      {
-                        path: 'environment.wind.directionTrue',
-                        value: windDir
-                      },
-                      {
-                        path: 'environment.outside.pressure',
-                        value: pressure
-                      },
-                      {
-                        path: 'environment.date',
-                        value: date
-                      },
-                    ],
-                    source: { label: plugin.id },
-                    timestamp: (new Date().toISOString()),
-                  }
-                ]
-              })
+              try {
+                app.debug(JSON.stringify(json));
+                const json = JSON.parse(json);
+
+                const name = json.station.name;
+                const latitude = json.station.latitude;
+                const longitude = json.station.longitude;
+                const geoid = json.station.geoid;
+                const mmsi = String(Math.abs(geoid)).padStart(9, '0');
+                const temperature = C_to_K(json.observations.temperature);
+                const windSpeed = json.observations.windSpeedMs;
+                const windGust = json.observations.windGustMs;
+                const windDir = degrees_to_radians(json.observations.windDir);
+                const pressure = json.observations.pressureMbar * 100;
+                const date = json.observations.time;
+
+                app.handleMessage('signalk-net-weather-finland', {
+                  context: `meteo.urn:mrn:imo:mmsi:${mmsi}`,
+                  updates: [
+                    {
+                      values: [
+                        { path: 'environment.station.geoid', value: geoid },
+                        { path: 'navigation.position', value: { longitude, latitude } },
+                        { path: '', value: { name, shortName } },
+                        { path: 'environment.outside.temperature', value: temperature },
+                        { path: 'environment.wind.averageSpeed', value: windSpeed },
+                        { path: 'environment.wind.gust', value: windGust },
+                        { path: 'environment.wind.directionTrue', value: windDir },
+                        { path: 'environment.outside.pressure', value: pressure },
+                        { path: 'environment.date', value: date }
+                      ],
+                      source: { label: plugin.id },
+                      timestamp: new Date().toISOString()
+                    }
+                  ]
+                });
+              } catch (parseErr) {
+                console.error('Failed to parse JSON response', parseErr);
+              }
             })
-        })
+            .catch((error) => {
+              console.error(`Failed to fetch data from ${url}`, error);
+            });
+        });
       } else {
-        app.debug("No own position, can not fetch nearest stations' data");
+        app.debug("No own position, cannot fetch nearest stations' data");
       }
-    } catch (error) {}
+    } catch (error) {
+      console.error('Error reading meteorological data:', error);
+    }
   };
+
   return plugin;
-}
+};
