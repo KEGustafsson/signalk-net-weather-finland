@@ -4,6 +4,10 @@
   "description": "Finnish Meteorological Institute coastal weather station data for Signal K",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist/",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build",
