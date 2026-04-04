@@ -11,11 +11,10 @@
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "declaration": true,
-    "rootDir": ".",
+    "rootDir": "src",
     "outDir": "dist"
   },
   "include": [
-    "index.ts",
     "src/**/*.ts"
   ],
   "exclude": [

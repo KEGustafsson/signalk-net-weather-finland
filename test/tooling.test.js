@@ -7,8 +7,8 @@ const pkg = require('../package.json');
 test('build outputs expected artifacts', () => {
   assert.equal(fs.existsSync('dist/index.js'), true);
   assert.equal(fs.existsSync('dist/index.d.ts'), true);
-  assert.equal(fs.existsSync('dist/src/index.js'), true);
-  assert.equal(fs.existsSync('dist/src/index.d.ts'), true);
+  assert.equal(fs.existsSync('dist/src/index.js'), false);
+  assert.equal(fs.existsSync('dist/src/index.d.ts'), false);
 });
 
 test('package entrypoints reference built artifacts', () => {

@@ -1,0 +1,14 @@
+.git/
+.github/
+.vscode/
+node_modules/
+.npm-cache/
+build/
+src/
+test/
+
+.gitignore
+.npmignore
+eslint.config.js
+package-lock.json
+tsconfig.json

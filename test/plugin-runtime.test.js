@@ -54,7 +54,6 @@ function loadPluginWithMocks() {
   };
 
   delete require.cache[require.resolve('../dist/index.js')];
-  delete require.cache[require.resolve('../dist/src/index.js')];
   const createPlugin = require('../dist/index.js');
 
   Module._load = originalLoad;
