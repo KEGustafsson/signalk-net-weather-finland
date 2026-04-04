@@ -164,7 +164,7 @@ module.exports = function createPlugin(app) {
 
         distToStation = distToStation.sort((a, b) => a[5] - b[5]).slice(0, numberOfStations);
 
-        app.debug(distToStation);
+        app.debug('Nearest stations: %s', JSON.stringify(distToStation));
 
         distToStation.forEach(([longName, shortName, fmisid, lat, lon, distance]) => {
           const url = `https://tuuleeko.fi/fmiproxy/nearest-observations?lat=${lat}&lon=${lon}&latest=true`;
@@ -215,7 +215,8 @@ module.exports = function createPlugin(app) {
                 console.error('Failed to parse JSON response', parseErr);
               }
             })
-            .catch(() => {
+            .catch((err) => {
+              app.debug('Fetch error for station %s: %s', shortName, err.message);
             });
         });
       } else {
