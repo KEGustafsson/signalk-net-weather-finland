@@ -75,7 +75,7 @@ export interface SignalKMessage {
 export type Station = readonly [string, string, number, number, number];
 
 // Station with distance: [longName, shortName, fmisid, lat, lon, distance]
-export type StationWithDistance = [string, string, number, number, number, number];
+export type StationWithDistance = readonly [string, string, number, number, number, number];
 
 // FMI WFS XML parsed types
 

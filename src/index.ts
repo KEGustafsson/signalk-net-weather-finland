@@ -34,16 +34,21 @@ import type {
   WfsTimeseries,
   WfsPoint,
   WfsMember,
-  WfsFeatureCollection,
   TimeValue,
   WeatherObservations,
 } from './types';
 
+const FETCH_TIMEOUT_MS = 30000;
+const DEFAULT_UPDATE_MINUTES = 10;
+const DEFAULT_NUM_STATIONS = 3;
+const INITIAL_INTERVAL_MS = 10000;
+
 function createPlugin(app: SignalKApp): SignalKPlugin {
-  let numberOfStations: number;
-  let updateWeather: number;
-  let interval: ReturnType<typeof setInterval>;
-  let intervalTime = 10000;
+  let numberOfStations = DEFAULT_NUM_STATIONS;
+  let updateWeather = DEFAULT_UPDATE_MINUTES;
+  let interval: ReturnType<typeof setInterval> | null = null;
+  let intervalTime = INITIAL_INTERVAL_MS;
+  let isFetching = false;
 
   const xmlParser = new XMLParser({
     ignoreAttributes: false,
@@ -52,14 +57,15 @@ function createPlugin(app: SignalKApp): SignalKPlugin {
   });
 
   function clear(): void {
-    clearInterval(interval);
+    if (interval !== null) {
+      clearInterval(interval);
+    }
     intervalTime = updateWeather * 60000;
     interval = setInterval(readMeteo, intervalTime);
   }
 
   function degrees_to_radians(degrees: number): number {
-    const pi = Math.PI;
-    return degrees * (pi / 180);
+    return degrees * (Math.PI / 180);
   }
 
   function C_to_K(celsius: number): number {
@@ -81,14 +87,21 @@ function createPlugin(app: SignalKApp): SignalKPlugin {
     return null;
   }
 
-  function parseObservations(xml: string): WeatherObservations | null {
-    const parsed = xmlParser.parse(xml) as WfsFeatureCollection;
-    const collection = parsed.FeatureCollection;
-    if (!collection?.member) return null;
+  function isWfsFeatureCollection(parsed: unknown): parsed is { FeatureCollection: { member: WfsMember | WfsMember[] } } {
+    if (typeof parsed !== 'object' || parsed === null) return false;
+    const obj = parsed as Record<string, unknown>;
+    if (typeof obj['FeatureCollection'] !== 'object' || obj['FeatureCollection'] === null) return false;
+    const fc = obj['FeatureCollection'] as Record<string, unknown>;
+    return fc['member'] !== undefined && fc['member'] !== null;
+  }
 
-    const members: WfsMember[] = Array.isArray(collection.member)
-      ? collection.member
-      : [collection.member];
+  function parseObservations(xml: string): WeatherObservations | null {
+    const parsed: unknown = xmlParser.parse(xml);
+    if (!isWfsFeatureCollection(parsed)) return null;
+
+    const members: WfsMember[] = Array.isArray(parsed.FeatureCollection.member)
+      ? parsed.FeatureCollection.member
+      : [parsed.FeatureCollection.member];
 
     const observations: WeatherObservations = { time: null };
 
@@ -178,6 +191,11 @@ function createPlugin(app: SignalKApp): SignalKPlugin {
   ] as const;
 
   const readMeteo = function readMeteo(): void {
+    if (isFetching) {
+      app.debug('Previous fetch still in progress, skipping');
+      return;
+    }
+
     try {
       const ownLon = app.getSelfPath('navigation.position.value.longitude');
       const ownLat = app.getSelfPath('navigation.position.value.latitude');
@@ -201,10 +219,16 @@ function createPlugin(app: SignalKApp): SignalKPlugin {
 
         app.debug(nearest);
 
+        isFetching = true;
+        let pending = nearest.length;
+
         nearest.forEach(([longName, shortName, fmisid, lat, lon]) => {
           const url = `https://opendata.fmi.fi/wfs?service=WFS&version=2.0.0&request=getFeature&storedquery_id=fmi::observations::weather::timevaluepair&fmisid=${fmisid}&parameters=t2m,ws_10min,wg_10min,wd_10min,p_sea&timestep=10`;
 
-          fetch(url)
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+          fetch(url, { signal: controller.signal })
             .then((res) => {
               if (!res.ok) {
                 throw new Error(`HTTP error! Status: ${res.status}`);
@@ -262,12 +286,20 @@ function createPlugin(app: SignalKApp): SignalKPlugin {
             })
             .catch((err: Error) => {
               app.debug(`Failed to fetch weather data for ${longName}: ${err.message}`);
+            })
+            .finally(() => {
+              clearTimeout(timeoutId);
+              pending--;
+              if (pending <= 0) {
+                isFetching = false;
+              }
             });
         });
       } else {
         app.debug("No own position, cannot fetch nearest stations' data");
       }
     } catch (error) {
+      isFetching = false;
       console.error('Error reading meteorological data:', error);
     }
   };
@@ -296,13 +328,17 @@ function createPlugin(app: SignalKApp): SignalKPlugin {
     },
     start(options: PluginOptions): void {
       app.debug('Signal K Net Weather Finland started');
-      updateWeather = options.updateWeather;
-      numberOfStations = options.numberOfStations;
+      updateWeather = Math.max(options.updateWeather, 10);
+      numberOfStations = Math.min(Math.max(options.numberOfStations, 1), 51);
       interval = setInterval(readMeteo, intervalTime);
       readMeteo();
     },
     stop(): void {
-      clearInterval(interval);
+      if (interval !== null) {
+        clearInterval(interval);
+        interval = null;
+      }
+      isFetching = false;
       app.debug('Signal K Net Weather Finland stopped');
     },
     _test: {

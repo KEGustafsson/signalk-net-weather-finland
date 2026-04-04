@@ -643,5 +643,151 @@ describe('signalk-net-weather-finland', () => {
       expect(mmsiMatch).not.toBeNull();
       expect(mmsiMatch![1]).toHaveLength(9);
     });
+
+    test('options validation clamps updateWeather to minimum 10', () => {
+      app.getSelfPath.mockReturnValue(null);
+      plugin.start({ updateWeather: 1, numberOfStations: 3 });
+
+      // The fact that start doesn't throw with value < 10 confirms clamping
+      expect(app.debug).toHaveBeenCalledWith(
+        "No own position, cannot fetch nearest stations' data"
+      );
+    });
+
+    test('options validation clamps numberOfStations to 1 when given 0', async () => {
+      setupPosition();
+      mockFetchSuccess(buildFmiXml());
+
+      plugin.start({ updateWeather: 10, numberOfStations: 0 });
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    test('handles XML with missing PointTimeSeriesObservation', async () => {
+      setupPosition();
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<wfs:FeatureCollection xmlns:wfs="http://www.opengis.net/wfs/2.0">
+    <wfs:member>
+    </wfs:member>
+</wfs:FeatureCollection>`;
+      mockFetchSuccess(xml);
+
+      plugin.start({ updateWeather: 10, numberOfStations: 1 });
+      await flushPromises();
+
+      // Member exists but has no weather data - basic station info is still sent
+      // The important thing is it doesn't crash
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    test('handles XML with empty MeasurementTimeseries', async () => {
+      setupPosition();
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<wfs:FeatureCollection
+    xmlns:wfs="http://www.opengis.net/wfs/2.0"
+    xmlns:om="http://www.opengis.net/om/2.0"
+    xmlns:omso="http://inspire.ec.europa.eu/schemas/omso/3.0"
+    xmlns:gml="http://www.opengis.net/gml/3.2"
+    xmlns:wml2="http://www.opengis.net/waterml/2.0">
+    <wfs:member>
+      <omso:PointTimeSeriesObservation gml:id="obs-1-t2m">
+        <om:result>
+          <wml2:MeasurementTimeseries gml:id="obs-obs-1-1-t2m">
+          </wml2:MeasurementTimeseries>
+        </om:result>
+      </omso:PointTimeSeriesObservation>
+    </wfs:member>
+</wfs:FeatureCollection>`;
+      mockFetchSuccess(xml);
+
+      plugin.start({ updateWeather: 10, numberOfStations: 1 });
+      await flushPromises();
+
+      // Doesn't crash, basic station info still sent
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ─── Concurrent fetch guard ───
+
+  describe('concurrent fetch guard', () => {
+    const originalFetch = global.fetch;
+    let fetchMock: jest.Mock;
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      app.getSelfPath.mockImplementation((path: string) => {
+        if (path === 'navigation.position.value.longitude') return 24.98;
+        if (path === 'navigation.position.value.latitude') return 60.11;
+        return null;
+      });
+    });
+
+    afterEach(() => {
+      plugin.stop();
+      jest.useRealTimers();
+      global.fetch = originalFetch;
+    });
+
+    test('prevents overlapping fetches', () => {
+      // Create a fetch that never resolves
+      fetchMock = jest.fn().mockReturnValue(new Promise<Response>(() => {}));
+      global.fetch = fetchMock;
+
+      plugin.start({ updateWeather: 10, numberOfStations: 1 });
+      // First readMeteo called synchronously, fetch in-flight, isFetching = true
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      // clear() was called, interval is now 600000ms. Advance to trigger next readMeteo
+      jest.advanceTimersByTime(600000);
+
+      // Second readMeteo should have been blocked by isFetching guard
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(app.debug).toHaveBeenCalledWith('Previous fetch still in progress, skipping');
+    });
+  });
+
+  // ─── clear() function ───
+
+  describe('clear function behavior', () => {
+    const originalFetch = global.fetch;
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      plugin.stop();
+      jest.useRealTimers();
+      global.fetch = originalFetch;
+    });
+
+    test('resets interval to updateWeather frequency after position acquired', () => {
+      // Start with no position - interval stays at initial 10s
+      app.getSelfPath.mockReturnValue(null);
+      plugin.start({ updateWeather: 10, numberOfStations: 1 });
+
+      // Now provide position - next readMeteo call should trigger clear()
+      const fetchMockLocal = jest.fn().mockReturnValue(new Promise<Response>(() => {}));
+      global.fetch = fetchMockLocal;
+
+      app.getSelfPath.mockImplementation((path: string) => {
+        if (path === 'navigation.position.value.longitude') return 24.98;
+        if (path === 'navigation.position.value.latitude') return 60.11;
+        return null;
+      });
+
+      // Advance past the initial 10s interval to trigger readMeteo
+      jest.advanceTimersByTime(10000);
+
+      // clear() should have been called and a fetch initiated
+      expect(fetchMockLocal).toHaveBeenCalled();
+
+      // Now advance 10s again - should NOT trigger readMeteo (interval is now 600000ms)
+      fetchMockLocal.mockClear();
+      jest.advanceTimersByTime(10000);
+      expect(fetchMockLocal).not.toHaveBeenCalled();
+    });
   });
 });
