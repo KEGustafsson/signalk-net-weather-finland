@@ -121,7 +121,7 @@ module.exports = function createPlugin(app) {
       const timeseries = obs.result && obs.result.MeasurementTimeseries;
       if (!timeseries) return;
 
-      const gmlId = timeseries['@_gml:id'] || timeseries['@_id'] || '';
+      const gmlId = timeseries['@_id'] || '';
       const latest = getLatestValue(timeseries);
       if (!latest) return;
 
@@ -222,7 +222,7 @@ module.exports = function createPlugin(app) {
 
         app.debug(distToStation);
 
-        distToStation.forEach(([longName, shortName, fmisid, lat, lon, distance]) => {
+        distToStation.forEach(([longName, shortName, fmisid, lat, lon, _distance]) => {
           const url = `https://opendata.fmi.fi/wfs?service=WFS&version=2.0.0&request=getFeature&storedquery_id=fmi::observations::weather::timevaluepair&fmisid=${fmisid}&parameters=t2m,ws_10min,wg_10min,wd_10min,p_sea&timestep=10`;
 
           fetch(url)
@@ -291,6 +291,15 @@ module.exports = function createPlugin(app) {
     } catch (error) {
       console.error('Error reading meteorological data:', error);
     }
+  };
+
+  // Expose internals for testing
+  plugin._test = {
+    degrees_to_radians,
+    C_to_K,
+    getLatestValue,
+    parseObservations,
+    stations,
   };
 
   return plugin;
