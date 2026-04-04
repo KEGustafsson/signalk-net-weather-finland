@@ -29,11 +29,17 @@ module.exports = function createPlugin(app) {
   plugin.description = 'Finnish Meteorological Institute coastal weather station data for Signal K';
 
   const haversine = require('haversine');
-  const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
+  const { XMLParser } = require('fast-xml-parser');
   let numberOfStations;
   let updateWeather;
   let interval;
   let intervalTime = 10000;
+
+  const xmlParser = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: '@_',
+    removeNSPrefix: true
+  });
 
   plugin.start = function (options) {
     app.debug('Signal K Net Weather Finland started');
@@ -78,16 +84,66 @@ module.exports = function createPlugin(app) {
     return degrees * (pi / 180);
   }
 
-  function kmh_to_knots(speed) {
-    return speed / 1.852;
-  }
-
-  function draught_value(data) {
-    return data / 10;
-  }
-
   function C_to_K(data) {
     return data + 273.15;
+  }
+
+  function getLatestValue(timeseries) {
+    const points = timeseries.point;
+    if (!points) return null;
+    const arr = Array.isArray(points) ? points : [points];
+    for (let i = arr.length - 1; i >= 0; i--) {
+      const tvp = arr[i].MeasurementTVP;
+      const val = parseFloat(tvp.value);
+      if (!isNaN(val)) {
+        return { value: val, time: tvp.time };
+      }
+    }
+    return null;
+  }
+
+  function parseObservations(xml) {
+    const parsed = xmlParser.parse(xml);
+    const collection = parsed.FeatureCollection;
+    if (!collection || !collection.member) return null;
+
+    const members = Array.isArray(collection.member)
+      ? collection.member
+      : [collection.member];
+
+    const observations = {};
+    let observationTime = null;
+
+    members.forEach((member) => {
+      const obs = member.PointTimeSeriesObservation;
+      if (!obs) return;
+
+      const timeseries = obs.result && obs.result.MeasurementTimeseries;
+      if (!timeseries) return;
+
+      const gmlId = timeseries['@_gml:id'] || timeseries['@_id'] || '';
+      const latest = getLatestValue(timeseries);
+      if (!latest) return;
+
+      if (!observationTime) {
+        observationTime = latest.time;
+      }
+
+      if (gmlId.includes('t2m')) {
+        observations.temperature = latest.value;
+      } else if (gmlId.includes('ws_10min')) {
+        observations.windSpeed = latest.value;
+      } else if (gmlId.includes('wg_10min')) {
+        observations.windGust = latest.value;
+      } else if (gmlId.includes('wd_10min')) {
+        observations.windDir = latest.value;
+      } else if (gmlId.includes('p_sea')) {
+        observations.pressure = latest.value;
+      }
+    });
+
+    observations.time = observationTime;
+    return observations;
   }
 
   const stations = [
@@ -167,55 +223,66 @@ module.exports = function createPlugin(app) {
         app.debug(distToStation);
 
         distToStation.forEach(([longName, shortName, fmisid, lat, lon, distance]) => {
-          const url = `https://tuuleeko.fi/fmiproxy/nearest-observations?lat=${lat}&lon=${lon}&latest=true`;
+          const url = `https://opendata.fmi.fi/wfs?service=WFS&version=2.0.0&request=getFeature&storedquery_id=fmi::observations::weather::timevaluepair&fmisid=${fmisid}&parameters=t2m,ws_10min,wg_10min,wd_10min,p_sea&timestep=10`;
 
-          fetch(url, { method: 'GET' })
+          fetch(url)
             .then((res) => {
               if (!res.ok) {
                 throw new Error(`HTTP error! Status: ${res.status}`);
               }
-              return res.json();
+              return res.text();
             })
-            .then((json) => {
+            .then((xml) => {
               try {
-                app.debug(JSON.stringify(json));
-                const name = json.station.name;
-                const latitude = json.station.latitude;
-                const longitude = json.station.longitude;
-                const geoid = json.station.geoid;
-                const mmsi = String(Math.abs(geoid)).padStart(9, '0');
-                const temperature = C_to_K(json.observations.temperature);
-                const windSpeed = json.observations.windSpeedMs;
-                const windGust = json.observations.windGustMs;
-                const windDir = degrees_to_radians(json.observations.windDir);
-                const pressure = json.observations.pressureMbar * 100;
-                const date = json.observations.time;
+                app.debug(`FMI response for ${longName} (fmisid: ${fmisid})`);
+                const observations = parseObservations(xml);
+                if (!observations) {
+                  app.debug(`No observations parsed for ${longName}`);
+                  return;
+                }
+
+                const mmsi = String(fmisid).padStart(9, '0');
+                const values = [
+                  { path: 'environment.station.fmisid', value: fmisid },
+                  { path: 'navigation.position', value: { longitude: lon, latitude: lat } },
+                  { path: '', value: { name: longName, shortName } },
+                ];
+
+                if (observations.temperature !== undefined) {
+                  values.push({ path: 'environment.outside.temperature', value: C_to_K(observations.temperature) });
+                }
+                if (observations.windSpeed !== undefined) {
+                  values.push({ path: 'environment.wind.averageSpeed', value: observations.windSpeed });
+                }
+                if (observations.windGust !== undefined) {
+                  values.push({ path: 'environment.wind.gust', value: observations.windGust });
+                }
+                if (observations.windDir !== undefined) {
+                  values.push({ path: 'environment.wind.directionTrue', value: degrees_to_radians(observations.windDir) });
+                }
+                if (observations.pressure !== undefined) {
+                  values.push({ path: 'environment.outside.pressure', value: observations.pressure * 100 });
+                }
+                if (observations.time) {
+                  values.push({ path: 'environment.date', value: observations.time });
+                }
 
                 app.handleMessage('signalk-net-weather-finland', {
                   context: `meteo.urn:mrn:imo:mmsi:${mmsi}`,
                   updates: [
                     {
-                      values: [
-                        { path: 'environment.station.geoid', value: geoid },
-                        { path: 'navigation.position', value: { longitude, latitude } },
-                        { path: '', value: { name, shortName } },
-                        { path: 'environment.outside.temperature', value: temperature },
-                        { path: 'environment.wind.averageSpeed', value: windSpeed },
-                        { path: 'environment.wind.gust', value: windGust },
-                        { path: 'environment.wind.directionTrue', value: windDir },
-                        { path: 'environment.outside.pressure', value: pressure },
-                        { path: 'environment.date', value: date }
-                      ],
+                      values,
                       source: { label: plugin.id },
                       timestamp: new Date().toISOString()
                     }
                   ]
                 });
               } catch (parseErr) {
-                console.error('Failed to parse JSON response', parseErr);
+                console.error(`Failed to parse FMI response for ${longName}:`, parseErr);
               }
             })
-            .catch(() => {
+            .catch((err) => {
+              app.debug(`Failed to fetch weather data for ${longName}: ${err.message}`);
             });
         });
       } else {
