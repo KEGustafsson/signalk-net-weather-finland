@@ -4,22 +4,42 @@ This plugin fetches weather data from Finnish Meteorological Institute coastal w
 
 ## Features
 
-- Fetches data from the nearest Finnish Meteorological Institute coastal weather stations.
-- Provides the following weather data:
-  - Name of the weather station
-  - Short name of the weather station
-  - FMISID of the weather station
-  - Latitude and Longitude of the weather station
-  - Temperature
-  - Wind speed
-  - Wind gust
-  - Wind direction
-  - Pressure
-  - Date of the observation
+- Fetches data from the nearest Finnish Meteorological Institute coastal weather stations
+- Automatically selects stations based on vessel position using haversine distance
+- Configurable number of monitored stations (1-51)
+- Configurable update interval
+- Provides the following weather data per station:
+  - Station name and short name
+  - FMISID (station identifier)
+  - Station position (latitude/longitude)
+  - Temperature (Kelvin)
+  - Wind speed (m/s)
+  - Wind gust (m/s)
+  - Wind direction (radians, true)
+  - Atmospheric pressure (Pa)
+  - Observation timestamp
+- Handles missing sensor data gracefully (NaN values are excluded)
 
 ## Data Source
 
 This plugin fetches weather observation data directly from the [Finnish Meteorological Institute Open Data](https://en.ilmatieteenlaitos.fi/open-data) WFS API (`opendata.fmi.fi`). The data is freely available under the [Creative Commons Attribution 4.0](https://creativecommons.org/licenses/by/4.0/) license. No API key is required.
+
+The plugin queries the `fmi::observations::weather::timevaluepair` stored query for each station using its FMISID, requesting the following parameters: `t2m`, `ws_10min`, `wg_10min`, `wd_10min`, `p_sea`.
+
+## Signal K Paths
+
+Weather data is published under the `meteo` context with the following paths:
+
+| Path | Description | Unit |
+|------|-------------|------|
+| `environment.station.fmisid` | FMI station identifier | - |
+| `navigation.position` | Station coordinates | lat/lon |
+| `environment.outside.temperature` | Air temperature | Kelvin |
+| `environment.wind.averageSpeed` | Wind speed (10 min avg) | m/s |
+| `environment.wind.gust` | Wind gust speed | m/s |
+| `environment.wind.directionTrue` | Wind direction (true) | radians |
+| `environment.outside.pressure` | Sea level pressure | Pascal |
+| `environment.date` | Observation timestamp | ISO 8601 |
 
 ## Usage
 
@@ -31,21 +51,42 @@ Freeboard-SK is able to show meteo data and this needs to be enabled from settin
 
 Plugin settings:
 
-- Data fetching interval, minimum interval 10 minutes
-- Number of nearest weather stations to monitor
+- **Data fetching interval** — how often to fetch (minimum 10 minutes)
+- **Number of stations** — how many nearest stations to monitor (1-51)
 
 ## Development
 
 ### Prerequisites
 
 - Node.js 18 or later (uses native `fetch`)
+- TypeScript (strict mode, no `any` types)
+
+### Setup
+
+```bash
+npm install        # Install dependencies
+npm run build      # Compile TypeScript to dist/
+```
 
 ### Scripts
 
 ```bash
-npm test           # Run tests (Jest)
-npm run lint       # Run linter (ESLint)
+npm run build       # Compile TypeScript
+npm run typecheck   # Type-check without emitting
+npm test            # Run tests (Jest, 46 tests)
+npm run lint        # Run linter (ESLint + @typescript-eslint)
 npm run audit-check # Check for vulnerabilities
+```
+
+### Project Structure
+
+```
+src/
+  index.ts          # Plugin source
+  types.ts          # TypeScript interfaces
+__tests__/
+  index.test.ts     # Comprehensive test suite
+dist/               # Compiled output (gitignored)
 ```
 
 ## Support
