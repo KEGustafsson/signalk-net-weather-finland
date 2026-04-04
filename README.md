@@ -43,8 +43,10 @@ Plugin settings:
 ### Scripts
 
 ```bash
-npm test           # Run tests (Jest)
-npm run lint       # Run linter (ESLint)
+npm run clean      # Clean dist/build output folders
+npm run build      # Build TypeScript into dist/
+npm test           # Run tests (Node built-in test runner)
+npm run lint       # Run linter (ESLint + TypeScript typecheck)
 npm run audit-check # Check for vulnerabilities
 ```
 

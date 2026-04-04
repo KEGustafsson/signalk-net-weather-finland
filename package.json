@@ -2,11 +2,14 @@
   "name": "signalk-net-weather-finland",
   "version": "0.4.1",
   "description": "Finnish Meteorological Institute coastal weather station data for Signal K",
-  "main": "index.js",
+  "main": "dist/index.js",
   "scripts": {
-    "test": "jest --verbose",
-    "lint": "eslint index.js __tests__/",
-    "audit-check": "npm audit --audit-level=moderate"
+    "clean": "node -e \"const fs=require('fs');fs.rmSync('dist',{recursive:true,force:true});fs.rmSync('build',{recursive:true,force:true});\"",
+    "build": "npm run clean && tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/**/*.test.js",
+    "lint": "eslint test/**/*.js && npm run typecheck",
+    "audit-check": "npm audit --audit-level=moderate",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "keywords": [
     "signalk-node-server-plugin",
@@ -21,6 +24,7 @@
   },
   "devDependencies": {
     "eslint": "^8.57.1",
-    "jest": "^29.7.0"
-  }
+    "typescript": "^5.8.3"
+  },
+  "types": "dist/index.d.ts"
 }
