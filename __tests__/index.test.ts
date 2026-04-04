@@ -1,12 +1,35 @@
-const createPlugin = require('../index');
+import createPlugin from '../src/index';
+import type {
+  SignalKApp,
+  SignalKPlugin,
+  SignalKMessage,
+  SignalKValue,
+  TestHelpers,
+  WfsTimeseries,
+} from '../src/types';
 
 // Mock app object for SignalK
-function createMockApp() {
+function createMockApp(): SignalKApp & {
+  debug: jest.Mock;
+  getSelfPath: jest.Mock;
+  handleMessage: jest.Mock;
+} {
   return {
     debug: jest.fn(),
     getSelfPath: jest.fn(),
     handleMessage: jest.fn(),
   };
+}
+
+type MockApp = ReturnType<typeof createMockApp>;
+
+interface FmiXmlOptions {
+  t2m?: string;
+  ws?: string;
+  wg?: string;
+  wd?: string;
+  pSea?: string;
+  time?: string;
 }
 
 // Minimal WFS XML with all 5 parameters
@@ -17,8 +40,8 @@ function buildFmiXml({
   wd = '170',
   pSea = '999.5',
   time = '2026-04-04T08:40:00Z',
-} = {}) {
-  function memberBlock(paramName, value, timestamp) {
+}: FmiXmlOptions = {}): string {
+  function memberBlock(paramName: string, value: string, timestamp: string): string {
     return `
     <wfs:member>
       <omso:PointTimeSeriesObservation gml:id="obs-1-${paramName}">
@@ -52,7 +75,7 @@ function buildFmiXml({
 }
 
 // Build XML with multiple time points per parameter
-function buildMultiPointXml(paramName, timeValuePairs) {
+function buildMultiPointXml(paramName: string, timeValuePairs: [string, string][]): string {
   const points = timeValuePairs
     .map(
       ([time, value]) => `
@@ -85,9 +108,9 @@ function buildMultiPointXml(paramName, timeValuePairs) {
 }
 
 describe('signalk-net-weather-finland', () => {
-  let app;
-  let plugin;
-  let helpers;
+  let app: MockApp;
+  let plugin: SignalKPlugin;
+  let helpers: TestHelpers;
 
   beforeEach(() => {
     app = createMockApp();
@@ -198,7 +221,7 @@ describe('signalk-net-weather-finland', () => {
         // Longitudes between 19 and 30
         expect(station[4]).toBeGreaterThanOrEqual(19);
         expect(station[4]).toBeLessThanOrEqual(30);
-      }, `Station at index ${0} failed validation`);
+      });
     });
 
     test('all fmisid values are unique', () => {
@@ -211,7 +234,7 @@ describe('signalk-net-weather-finland', () => {
 
   describe('getLatestValue', () => {
     test('returns last valid value from array of points', () => {
-      const timeseries = {
+      const timeseries: WfsTimeseries = {
         point: [
           { MeasurementTVP: { time: '2026-04-04T08:20:00Z', value: '3.5' } },
           { MeasurementTVP: { time: '2026-04-04T08:30:00Z', value: '4.0' } },
@@ -223,7 +246,7 @@ describe('signalk-net-weather-finland', () => {
     });
 
     test('skips NaN values and returns last valid', () => {
-      const timeseries = {
+      const timeseries: WfsTimeseries = {
         point: [
           { MeasurementTVP: { time: '2026-04-04T08:20:00Z', value: '3.5' } },
           { MeasurementTVP: { time: '2026-04-04T08:30:00Z', value: '4.0' } },
@@ -235,7 +258,7 @@ describe('signalk-net-weather-finland', () => {
     });
 
     test('returns null when all values are NaN', () => {
-      const timeseries = {
+      const timeseries: WfsTimeseries = {
         point: [
           { MeasurementTVP: { time: '2026-04-04T08:20:00Z', value: 'NaN' } },
           { MeasurementTVP: { time: '2026-04-04T08:30:00Z', value: 'NaN' } },
@@ -245,11 +268,11 @@ describe('signalk-net-weather-finland', () => {
     });
 
     test('returns null when no points', () => {
-      expect(helpers.getLatestValue({})).toBeNull();
+      expect(helpers.getLatestValue({} as WfsTimeseries)).toBeNull();
     });
 
     test('handles single point (not array)', () => {
-      const timeseries = {
+      const timeseries: WfsTimeseries = {
         point: { MeasurementTVP: { time: '2026-04-04T08:40:00Z', value: '5.5' } },
       };
       const result = helpers.getLatestValue(timeseries);
@@ -257,7 +280,7 @@ describe('signalk-net-weather-finland', () => {
     });
 
     test('handles numeric values (not strings)', () => {
-      const timeseries = {
+      const timeseries: WfsTimeseries = {
         point: [{ MeasurementTVP: { time: '2026-04-04T08:40:00Z', value: 7.2 } }],
       };
       const result = helpers.getLatestValue(timeseries);
@@ -272,12 +295,12 @@ describe('signalk-net-weather-finland', () => {
       const xml = buildFmiXml();
       const obs = helpers.parseObservations(xml);
 
-      expect(obs.temperature).toBe(4.4);
-      expect(obs.windSpeed).toBe(6.3);
-      expect(obs.windGust).toBe(7.4);
-      expect(obs.windDir).toBe(170);
-      expect(obs.pressure).toBe(999.5);
-      expect(obs.time).toBe('2026-04-04T08:40:00Z');
+      expect(obs?.temperature).toBe(4.4);
+      expect(obs?.windSpeed).toBe(6.3);
+      expect(obs?.windGust).toBe(7.4);
+      expect(obs?.windDir).toBe(170);
+      expect(obs?.pressure).toBe(999.5);
+      expect(obs?.time).toBe('2026-04-04T08:40:00Z');
     });
 
     test('parses XML with custom values', () => {
@@ -290,22 +313,22 @@ describe('signalk-net-weather-finland', () => {
       });
       const obs = helpers.parseObservations(xml);
 
-      expect(obs.temperature).toBe(-5.2);
-      expect(obs.windSpeed).toBe(12.0);
-      expect(obs.windGust).toBe(18.5);
-      expect(obs.windDir).toBe(270);
-      expect(obs.pressure).toBe(1013.25);
+      expect(obs?.temperature).toBe(-5.2);
+      expect(obs?.windSpeed).toBe(12.0);
+      expect(obs?.windGust).toBe(18.5);
+      expect(obs?.windDir).toBe(270);
+      expect(obs?.pressure).toBe(1013.25);
     });
 
     test('handles NaN values by excluding them', () => {
       const xml = buildFmiXml({ t2m: 'NaN', pSea: 'NaN' });
       const obs = helpers.parseObservations(xml);
 
-      expect(obs.temperature).toBeUndefined();
-      expect(obs.pressure).toBeUndefined();
-      expect(obs.windSpeed).toBe(6.3);
-      expect(obs.windGust).toBe(7.4);
-      expect(obs.windDir).toBe(170);
+      expect(obs?.temperature).toBeUndefined();
+      expect(obs?.pressure).toBeUndefined();
+      expect(obs?.windSpeed).toBe(6.3);
+      expect(obs?.windGust).toBe(7.4);
+      expect(obs?.windDir).toBe(170);
     });
 
     test('handles all NaN values', () => {
@@ -318,12 +341,12 @@ describe('signalk-net-weather-finland', () => {
       });
       const obs = helpers.parseObservations(xml);
 
-      expect(obs.temperature).toBeUndefined();
-      expect(obs.windSpeed).toBeUndefined();
-      expect(obs.windGust).toBeUndefined();
-      expect(obs.windDir).toBeUndefined();
-      expect(obs.pressure).toBeUndefined();
-      expect(obs.time).toBeNull();
+      expect(obs?.temperature).toBeUndefined();
+      expect(obs?.windSpeed).toBeUndefined();
+      expect(obs?.windGust).toBeUndefined();
+      expect(obs?.windDir).toBeUndefined();
+      expect(obs?.pressure).toBeUndefined();
+      expect(obs?.time).toBeNull();
     });
 
     test('returns null for empty/invalid XML', () => {
@@ -346,8 +369,8 @@ describe('signalk-net-weather-finland', () => {
         ['2026-04-04T08:40:00Z', '4.4'],
       ]);
       const obs = helpers.parseObservations(xml);
-      expect(obs.temperature).toBe(4.4);
-      expect(obs.time).toBe('2026-04-04T08:40:00Z');
+      expect(obs?.temperature).toBe(4.4);
+      expect(obs?.time).toBe('2026-04-04T08:40:00Z');
     });
 
     test('skips trailing NaN in multi-point series', () => {
@@ -358,22 +381,22 @@ describe('signalk-net-weather-finland', () => {
         ['2026-04-04T08:30:00Z', 'NaN'],
       ]);
       const obs = helpers.parseObservations(xml);
-      expect(obs.temperature).toBe(3.5);
-      expect(obs.time).toBe('2026-04-04T08:10:00Z');
+      expect(obs?.temperature).toBe(3.5);
+      expect(obs?.time).toBe('2026-04-04T08:10:00Z');
     });
 
     test('handles zero values correctly (not treated as NaN)', () => {
       const xml = buildFmiXml({ t2m: '0', ws: '0', wd: '0' });
       const obs = helpers.parseObservations(xml);
-      expect(obs.temperature).toBe(0);
-      expect(obs.windSpeed).toBe(0);
-      expect(obs.windDir).toBe(0);
+      expect(obs?.temperature).toBe(0);
+      expect(obs?.windSpeed).toBe(0);
+      expect(obs?.windDir).toBe(0);
     });
 
     test('handles negative temperature values', () => {
       const xml = buildFmiXml({ t2m: '-15.3' });
       const obs = helpers.parseObservations(xml);
-      expect(obs.temperature).toBe(-15.3);
+      expect(obs?.temperature).toBe(-15.3);
     });
   });
 
@@ -392,7 +415,6 @@ describe('signalk-net-weather-finland', () => {
     test('start sets up interval and calls readMeteo', () => {
       app.getSelfPath.mockReturnValue(null);
       plugin.start({ updateWeather: 10, numberOfStations: 3 });
-      // readMeteo is called immediately, but with no position it should debug log
       expect(app.debug).toHaveBeenCalledWith(
         "No own position, cannot fetch nearest stations' data"
       );
@@ -420,18 +442,36 @@ describe('signalk-net-weather-finland', () => {
 
   describe('readMeteo integration', () => {
     const originalFetch = global.fetch;
+    let fetchMock: jest.Mock;
 
-    function setupPosition() {
-      app.getSelfPath.mockImplementation((path) => {
+    function setupPosition(): void {
+      app.getSelfPath.mockImplementation((path: string) => {
         if (path === 'navigation.position.value.longitude') return 24.98;
         if (path === 'navigation.position.value.latitude') return 60.11;
         return null;
       });
     }
 
-    // Helper to flush all pending promise chains
-    function flushPromises() {
+    function flushPromises(): Promise<void> {
       return new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    function mockFetchSuccess(xml: string): void {
+      fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(xml),
+      });
+      global.fetch = fetchMock;
+    }
+
+    function getFetchUrl(callIndex: number): string {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      return String(fetchMock.mock.calls[callIndex]?.[0]);
+    }
+
+    function getHandledMessage(): SignalKMessage {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      return app.handleMessage.mock.calls[0]?.[1] as SignalKMessage;
     }
 
     afterEach(() => {
@@ -451,72 +491,64 @@ describe('signalk-net-weather-finland', () => {
         time: '2026-04-04T10:00:00Z',
       });
 
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        text: () => Promise.resolve(xml),
-      });
+      mockFetchSuccess(xml);
 
       plugin.start({ updateWeather: 10, numberOfStations: 1 });
       await flushPromises();
 
-      expect(global.fetch).toHaveBeenCalledTimes(1);
-      const fetchUrl = global.fetch.mock.calls[0][0];
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const fetchUrl = getFetchUrl(0);
       expect(fetchUrl).toContain('opendata.fmi.fi/wfs');
       expect(fetchUrl).toContain('storedquery_id=fmi::observations::weather::timevaluepair');
       expect(fetchUrl).toContain('fmisid=');
       expect(fetchUrl).toContain('parameters=t2m,ws_10min,wg_10min,wd_10min,p_sea');
 
       expect(app.handleMessage).toHaveBeenCalledTimes(1);
-      const msg = app.handleMessage.mock.calls[0][1];
+      const msg = getHandledMessage();
       expect(msg.context).toMatch(/^meteo\.urn:mrn:imo:mmsi:\d{9}$/);
 
-      const values = msg.updates[0].values;
-      const findValue = (path) => values.find((v) => v.path === path);
+      const values = msg.updates[0]!.values;
+      const findValue = (path: string): SignalKValue | undefined =>
+        values.find((v) => v.path === path);
 
-      expect(findValue('environment.outside.temperature').value).toBeCloseTo(278.15);
-      expect(findValue('environment.wind.averageSpeed').value).toBe(8.0);
-      expect(findValue('environment.wind.gust').value).toBe(12.0);
-      expect(findValue('environment.wind.directionTrue').value).toBeCloseTo(
+      expect(findValue('environment.outside.temperature')?.value).toBeCloseTo(278.15);
+      expect(findValue('environment.wind.averageSpeed')?.value).toBe(8.0);
+      expect(findValue('environment.wind.gust')?.value).toBe(12.0);
+      expect(findValue('environment.wind.directionTrue')?.value).toBeCloseTo(
         200 * (Math.PI / 180)
       );
-      expect(findValue('environment.outside.pressure').value).toBe(101000);
-      expect(findValue('environment.date').value).toBe('2026-04-04T10:00:00Z');
-      expect(findValue('navigation.position').value).toHaveProperty('latitude');
-      expect(findValue('navigation.position').value).toHaveProperty('longitude');
-      expect(findValue('environment.station.fmisid').value).toEqual(expect.any(Number));
+      expect(findValue('environment.outside.pressure')?.value).toBe(101000);
+      expect(findValue('environment.date')?.value).toBe('2026-04-04T10:00:00Z');
+      expect(findValue('navigation.position')?.value).toHaveProperty('latitude');
+      expect(findValue('navigation.position')?.value).toHaveProperty('longitude');
+      expect(findValue('environment.station.fmisid')?.value).toEqual(expect.any(Number));
     });
 
     test('sends correct SignalK message structure', async () => {
       setupPosition();
-      const xml = buildFmiXml();
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        text: () => Promise.resolve(xml),
-      });
+      mockFetchSuccess(buildFmiXml());
 
       plugin.start({ updateWeather: 10, numberOfStations: 1 });
       await flushPromises();
 
-      const msg = app.handleMessage.mock.calls[0][1];
+      const msg = getHandledMessage();
       expect(msg.updates).toHaveLength(1);
-      expect(msg.updates[0].source).toEqual({ label: 'signalk-net-weather-finland' });
-      expect(msg.updates[0].timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect(msg.updates[0]!.source).toEqual({ label: 'signalk-net-weather-finland' });
+      expect(msg.updates[0]!.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
 
-      // Check name and shortName are set
-      const nameValue = msg.updates[0].values.find((v) => v.path === '');
-      expect(nameValue.value).toHaveProperty('name');
-      expect(nameValue.value).toHaveProperty('shortName');
-      expect(typeof nameValue.value.name).toBe('string');
-      expect(typeof nameValue.value.shortName).toBe('string');
+      const nameValue = msg.updates[0]!.values.find((v) => v.path === '');
+      expect(nameValue?.value).toHaveProperty('name');
+      expect(nameValue?.value).toHaveProperty('shortName');
     });
 
     test('handles HTTP errors gracefully', async () => {
       setupPosition();
 
-      global.fetch = jest.fn().mockResolvedValue({
+      fetchMock = jest.fn().mockResolvedValue({
         ok: false,
         status: 503,
       });
+      global.fetch = fetchMock;
 
       plugin.start({ updateWeather: 10, numberOfStations: 1 });
       await flushPromises();
@@ -530,7 +562,8 @@ describe('signalk-net-weather-finland', () => {
     test('handles network errors gracefully', async () => {
       setupPosition();
 
-      global.fetch = jest.fn().mockRejectedValue(new Error('Network timeout'));
+      fetchMock = jest.fn().mockRejectedValue(new Error('Network timeout'));
+      global.fetch = fetchMock;
 
       plugin.start({ updateWeather: 10, numberOfStations: 1 });
       await flushPromises();
@@ -543,11 +576,7 @@ describe('signalk-net-weather-finland', () => {
 
     test('handles invalid XML response gracefully', async () => {
       setupPosition();
-
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        text: () => Promise.resolve('<invalid>not a wfs response</invalid>'),
-      });
+      mockFetchSuccess('<invalid>not a wfs response</invalid>');
 
       plugin.start({ updateWeather: 10, numberOfStations: 1 });
       await flushPromises();
@@ -557,34 +586,24 @@ describe('signalk-net-weather-finland', () => {
 
     test('fetches correct number of stations', async () => {
       setupPosition();
-
-      const xml = buildFmiXml();
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        text: () => Promise.resolve(xml),
-      });
+      mockFetchSuccess(buildFmiXml());
 
       plugin.start({ updateWeather: 10, numberOfStations: 5 });
       await flushPromises();
 
-      expect(global.fetch).toHaveBeenCalledTimes(5);
+      expect(fetchMock).toHaveBeenCalledTimes(5);
     });
 
     test('skips parameters with NaN in SignalK message', async () => {
       setupPosition();
-
-      const xml = buildFmiXml({ t2m: 'NaN', pSea: 'NaN' });
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        text: () => Promise.resolve(xml),
-      });
+      mockFetchSuccess(buildFmiXml({ t2m: 'NaN', pSea: 'NaN' }));
 
       plugin.start({ updateWeather: 10, numberOfStations: 1 });
       await flushPromises();
 
       expect(app.handleMessage).toHaveBeenCalledTimes(1);
-      const values = app.handleMessage.mock.calls[0][1].updates[0].values;
-      const paths = values.map((v) => v.path);
+      const msg = getHandledMessage();
+      const paths = msg.updates[0]!.values.map((v) => v.path);
 
       expect(paths).not.toContain('environment.outside.temperature');
       expect(paths).not.toContain('environment.outside.pressure');
@@ -595,42 +614,34 @@ describe('signalk-net-weather-finland', () => {
 
     test('selects nearest station based on vessel position', async () => {
       // Position very close to Hanko Russarö (59.77, 22.95)
-      app.getSelfPath.mockImplementation((path) => {
+      app.getSelfPath.mockImplementation((path: string) => {
         if (path === 'navigation.position.value.longitude') return 22.95;
         if (path === 'navigation.position.value.latitude') return 59.77;
         return null;
       });
 
-      const xml = buildFmiXml();
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        text: () => Promise.resolve(xml),
-      });
+      mockFetchSuccess(buildFmiXml());
 
       plugin.start({ updateWeather: 10, numberOfStations: 1 });
       await flushPromises();
 
-      expect(global.fetch).toHaveBeenCalledTimes(1);
-      const fetchUrl = global.fetch.mock.calls[0][0];
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const fetchUrl = getFetchUrl(0);
       // Hanko Russarö fmisid is 100932
       expect(fetchUrl).toContain('fmisid=100932');
     });
 
     test('MMSI is 9 digits padded from fmisid', async () => {
       setupPosition();
-      const xml = buildFmiXml();
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        text: () => Promise.resolve(xml),
-      });
+      mockFetchSuccess(buildFmiXml());
 
       plugin.start({ updateWeather: 10, numberOfStations: 1 });
       await flushPromises();
 
-      const msg = app.handleMessage.mock.calls[0][1];
+      const msg = getHandledMessage();
       const mmsiMatch = msg.context.match(/mmsi:(\d+)$/);
       expect(mmsiMatch).not.toBeNull();
-      expect(mmsiMatch[1]).toHaveLength(9);
+      expect(mmsiMatch![1]).toHaveLength(9);
     });
   });
 });
