@@ -24,112 +24,31 @@ SOFTWARE.
 
 import haversine from 'haversine';
 import { XMLParser } from 'fast-xml-parser';
+import type {
+  SignalKApp,
+  SignalKPlugin,
+  PluginOptions,
+  SignalKValue,
+  Station,
+  StationWithDistance,
+  WfsTimeseries,
+  WfsPoint,
+  WfsMember,
+  TimeValue,
+  WeatherObservations,
+} from './types';
 
-type JsonValue = string | number | boolean | null | JsonObject | JsonValue[];
-interface JsonObject {
-  [key: string]: JsonValue;
-}
+const FETCH_TIMEOUT_MS = 30000;
+const DEFAULT_UPDATE_MINUTES = 10;
+const DEFAULT_NUM_STATIONS = 3;
+const INITIAL_INTERVAL_MS = 10000;
 
-interface PluginOptions {
-  updateWeather: number;
-  numberOfStations: number;
-}
-
-interface Position {
-  latitude: number;
-  longitude: number;
-}
-
-interface SignalKValue {
-  path: string;
-  value: JsonValue;
-}
-
-interface SignalKUpdate {
-  values: SignalKValue[];
-  source: { label: string };
-  timestamp: string;
-}
-
-interface SignalKMessage {
-  context: string;
-  updates: SignalKUpdate[];
-}
-
-interface AppApi {
-  debug: (message: unknown) => void;
-  getSelfPath: (path: string) => number | null | undefined;
-  handleMessage: (pluginId: string, message: SignalKMessage) => void;
-}
-
-interface LatestValue {
-  value: number;
-  time: string;
-}
-
-interface ObservationValues {
-  temperature?: number;
-  windSpeed?: number;
-  windGust?: number;
-  windDir?: number;
-  pressure?: number;
-  time: string | null;
-}
-
-type Station = [longName: string, shortName: string, fmisid: number, lat: number, lon: number];
-type DistanceStation = [longName: string, shortName: string, fmisid: number, lat: number, lon: number, distance: number];
-
-interface MeasurementTVP {
-  time: string;
-  value: string | number;
-}
-
-interface Point {
-  MeasurementTVP: MeasurementTVP;
-}
-
-interface Timeseries {
-  '@_id'?: string;
-  point?: Point | Point[];
-}
-
-interface ObservationMember {
-  PointTimeSeriesObservation?: {
-    result?: {
-      MeasurementTimeseries?: Timeseries;
-    };
-  };
-}
-
-interface FeatureCollection {
-  member?: ObservationMember | ObservationMember[];
-}
-
-interface ParsedWfsResponse {
-  FeatureCollection?: FeatureCollection;
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function parseWfsResponse(xmlParser: XMLParser, xml: string): ParsedWfsResponse | null {
-  const parsed: unknown = xmlParser.parse(xml);
-  if (!isObject(parsed)) return null;
-  return parsed as ParsedWfsResponse;
-}
-
-function createPlugin(app: AppApi) {
-  const plugin = {
-    id: 'signalk-net-weather-finland',
-    name: 'Signal K Net Weather Finland',
-    description: 'Finnish Meteorological Institute coastal weather station data for Signal K',
-  };
-
-  let numberOfStations = 3;
-  let updateWeather = 10;
-  let interval: ReturnType<typeof setInterval> | undefined;
-  let intervalTime = 10000;
+function createPlugin(app: SignalKApp): SignalKPlugin {
+  let numberOfStations = DEFAULT_NUM_STATIONS;
+  let updateWeather = DEFAULT_UPDATE_MINUTES;
+  let interval: ReturnType<typeof setInterval> | null = null;
+  let intervalTime = INITIAL_INTERVAL_MS;
+  let isFetching = false;
 
   const xmlParser = new XMLParser({
     ignoreAttributes: false,
@@ -137,42 +56,8 @@ function createPlugin(app: AppApi) {
     removeNSPrefix: true,
   });
 
-  const schema = {
-    type: 'object',
-    properties: {
-      updateWeather: {
-        type: 'integer',
-        default: 10,
-        minimum: 10,
-        title: 'How often weather station data is fetched (in minutes)',
-      },
-      numberOfStations: {
-        type: 'integer',
-        default: 3,
-        minimum: 1,
-        maximum: 51,
-        title: 'Number of nearest weather stations to monitor',
-      },
-    },
-  };
-
-  function start(options: PluginOptions): void {
-    app.debug('Signal K Net Weather Finland started');
-    updateWeather = options.updateWeather;
-    numberOfStations = options.numberOfStations;
-    interval = setInterval(readMeteo, intervalTime);
-    readMeteo();
-  }
-
-  function stop(): void {
-    if (interval) {
-      clearInterval(interval);
-    }
-    app.debug('Signal K Net Weather Finland stopped');
-  }
-
   function resetInterval(): void {
-    if (interval) {
+    if (interval !== null) {
       clearInterval(interval);
     }
     intervalTime = updateWeather * 60000;
@@ -183,38 +68,42 @@ function createPlugin(app: AppApi) {
     return degrees * (Math.PI / 180);
   }
 
-  function C_to_K(data: number): number {
-    return data + 273.15;
+  function C_to_K(celsius: number): number {
+    return celsius + 273.15;
   }
 
-  function getLatestValue(timeseries: Timeseries): LatestValue | null {
+  function getLatestValue(timeseries: WfsTimeseries): TimeValue | null {
     const points = timeseries.point;
     if (!points) return null;
-
-    const arr = Array.isArray(points) ? points : [points];
-
-    for (let i = arr.length - 1; i >= 0; i -= 1) {
-      const point = arr[i];
-      if (!point) continue;
-      const tvp = point.MeasurementTVP;
-      const val = typeof tvp.value === 'number' ? tvp.value : parseFloat(tvp.value);
-      if (!Number.isNaN(val)) {
+    const arr: WfsPoint[] = Array.isArray(points) ? points : [points];
+    for (let i = arr.length - 1; i >= 0; i--) {
+      const tvp = arr[i]?.MeasurementTVP;
+      if (!tvp) continue;
+      const val = parseFloat(String(tvp.value));
+      if (!isNaN(val)) {
         return { value: val, time: tvp.time };
       }
     }
-
     return null;
   }
 
-  function parseObservations(xml: string): ObservationValues | null {
-    const parsed = parseWfsResponse(xmlParser, xml);
-    const collection = parsed?.FeatureCollection;
-    if (!collection?.member) return null;
+  function isWfsFeatureCollection(parsed: unknown): parsed is { FeatureCollection: { member: WfsMember | WfsMember[] } } {
+    if (typeof parsed !== 'object' || parsed === null) return false;
+    const obj = parsed as Record<string, unknown>;
+    if (typeof obj['FeatureCollection'] !== 'object' || obj['FeatureCollection'] === null) return false;
+    const fc = obj['FeatureCollection'] as Record<string, unknown>;
+    return fc['member'] !== undefined && fc['member'] !== null;
+  }
 
-    const members = Array.isArray(collection.member) ? collection.member : [collection.member];
+  function parseObservations(xml: string): WeatherObservations | null {
+    const parsed: unknown = xmlParser.parse(xml);
+    if (!isWfsFeatureCollection(parsed)) return null;
 
-    const observations: Omit<ObservationValues, 'time'> = {};
-    let observationTime: string | null = null;
+    const members: WfsMember[] = Array.isArray(parsed.FeatureCollection.member)
+      ? parsed.FeatureCollection.member
+      : [parsed.FeatureCollection.member];
+
+    const observations: WeatherObservations = { time: null };
 
     members.forEach((member) => {
       const obs = member.PointTimeSeriesObservation;
@@ -223,12 +112,12 @@ function createPlugin(app: AppApi) {
       const timeseries = obs.result?.MeasurementTimeseries;
       if (!timeseries) return;
 
-      const gmlId = timeseries['@_id'] ?? '';
+      const gmlId: string = timeseries['@_id'] ?? '';
       const latest = getLatestValue(timeseries);
       if (!latest) return;
 
-      if (!observationTime) {
-        observationTime = latest.time;
+      if (!observations.time) {
+        observations.time = latest.time;
       }
 
       if (gmlId.includes('t2m')) {
@@ -244,10 +133,10 @@ function createPlugin(app: AppApi) {
       }
     });
 
-    return { ...observations, time: observationTime };
+    return observations;
   }
 
-  const stations: Station[] = [
+  const stations: readonly Station[] = [
     ['Kotka Haapasaari', 'Haapasaari', 101042, 60.29, 27.18],
     ['Kotka Rankki', 'Rankki', 101030, 60.38, 26.96],
     ['Loviisa Orrengrund', 'Orrengrund', 101039, 60.27, 26.45],
@@ -299,34 +188,47 @@ function createPlugin(app: AppApi) {
     ['Liperi Tuiskavanluoto', 'Tuiskavanluoto', 101628, 62.55, 29.67],
     ['Kuopio Ritoniemi', 'Ritoniemi', 101580, 62.8, 27.9],
     ['Inari Seitalaassa', 'Seitalaassa', 129963, 69.05, 27.76],
-  ];
+  ] as const;
 
-  function readMeteo(): void {
+  const readMeteo = function readMeteo(): void {
+    if (isFetching) {
+      app.debug('Previous fetch still in progress, skipping');
+      return;
+    }
+
     try {
       const ownLon = app.getSelfPath('navigation.position.value.longitude');
       const ownLat = app.getSelfPath('navigation.position.value.latitude');
 
-      if (typeof ownLon === 'number' && typeof ownLat === 'number') {
+      if (ownLon && ownLat) {
         if (intervalTime !== updateWeather * 60000) {
           resetInterval();
         }
 
-        let distToStation: DistanceStation[] = [];
-        const ownLocation: Position = { latitude: ownLat, longitude: ownLon };
+        const distToStation: StationWithDistance[] = [];
+        const ownLocation = { latitude: Number(ownLat), longitude: Number(ownLon) };
 
         stations.forEach(([longName, shortName, fmisid, lat, lon]) => {
-          const distance = haversine(ownLocation, { latitude: lat, longitude: lon });
+          const distance: number = haversine(ownLocation, { latitude: lat, longitude: lon });
           distToStation.push([longName, shortName, fmisid, lat, lon, distance]);
         });
 
-        distToStation = distToStation.sort((a, b) => a[5] - b[5]).slice(0, numberOfStations);
+        const nearest = distToStation
+          .sort((a, b) => a[5] - b[5])
+          .slice(0, numberOfStations);
 
-        app.debug(distToStation);
+        app.debug(nearest);
 
-        distToStation.forEach(([longName, shortName, fmisid, lat, lon]) => {
+        isFetching = true;
+        let pending = nearest.length;
+
+        nearest.forEach(([longName, shortName, fmisid, lat, lon]) => {
           const url = `https://opendata.fmi.fi/wfs?service=WFS&version=2.0.0&request=getFeature&storedquery_id=fmi::observations::weather::timevaluepair&fmisid=${fmisid}&parameters=t2m,ws_10min,wg_10min,wd_10min,p_sea&timestep=10`;
 
-          fetch(url)
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+          fetch(url, { signal: controller.signal })
             .then((res) => {
               if (!res.ok) {
                 throw new Error(`HTTP error! Status: ${res.status}`);
@@ -334,72 +236,111 @@ function createPlugin(app: AppApi) {
               return res.text();
             })
             .then((xml) => {
-              app.debug(`FMI response for ${longName} (fmisid: ${fmisid})`);
-              const observations = parseObservations(xml);
-              if (!observations) {
-                app.debug(`No observations parsed for ${longName}`);
-                return;
-              }
+              try {
+                app.debug(`FMI response for ${longName} (fmisid: ${fmisid})`);
+                const observations = parseObservations(xml);
+                if (!observations) {
+                  app.debug(`No observations parsed for ${longName}`);
+                  return;
+                }
 
-              const mmsi = String(fmisid).padStart(9, '0');
-              const values: SignalKValue[] = [
-                { path: 'environment.station.fmisid', value: fmisid },
-                { path: 'navigation.position', value: { longitude: lon, latitude: lat } },
-                { path: '', value: { name: longName, shortName } },
-              ];
+                const mmsi = String(fmisid).padStart(9, '0');
+                const values: SignalKValue[] = [
+                  { path: 'environment.station.fmisid', value: fmisid },
+                  { path: 'navigation.position', value: { longitude: lon, latitude: lat } },
+                  { path: '', value: { name: longName, shortName } },
+                ];
 
-              if (observations.temperature !== undefined) {
-                values.push({ path: 'environment.outside.temperature', value: C_to_K(observations.temperature) });
-              }
-              if (observations.windSpeed !== undefined) {
-                values.push({ path: 'environment.wind.averageSpeed', value: observations.windSpeed });
-              }
-              if (observations.windGust !== undefined) {
-                values.push({ path: 'environment.wind.gust', value: observations.windGust });
-              }
-              if (observations.windDir !== undefined) {
-                values.push({ path: 'environment.wind.directionTrue', value: degrees_to_radians(observations.windDir) });
-              }
-              if (observations.pressure !== undefined) {
-                values.push({ path: 'environment.outside.pressure', value: observations.pressure * 100 });
-              }
-              if (observations.time) {
-                values.push({ path: 'environment.date', value: observations.time });
-              }
+                if (observations.temperature !== undefined) {
+                  values.push({ path: 'environment.outside.temperature', value: C_to_K(observations.temperature) });
+                }
+                if (observations.windSpeed !== undefined) {
+                  values.push({ path: 'environment.wind.averageSpeed', value: observations.windSpeed });
+                }
+                if (observations.windGust !== undefined) {
+                  values.push({ path: 'environment.wind.gust', value: observations.windGust });
+                }
+                if (observations.windDir !== undefined) {
+                  values.push({ path: 'environment.wind.directionTrue', value: degrees_to_radians(observations.windDir) });
+                }
+                if (observations.pressure !== undefined) {
+                  values.push({ path: 'environment.outside.pressure', value: observations.pressure * 100 });
+                }
+                if (observations.time) {
+                  values.push({ path: 'environment.date', value: observations.time });
+                }
 
-              app.handleMessage('signalk-net-weather-finland', {
-                context: `meteo.urn:mrn:imo:mmsi:${mmsi}`,
-                updates: [
-                  {
-                    values,
-                    source: { label: plugin.id },
-                    timestamp: new Date().toISOString(),
-                  },
-                ],
-              });
+                app.handleMessage('signalk-net-weather-finland', {
+                  context: `meteo.urn:mrn:imo:mmsi:${mmsi}`,
+                  updates: [
+                    {
+                      values,
+                      source: { label: plugin.id },
+                      timestamp: new Date().toISOString(),
+                    },
+                  ],
+                });
+              } catch (parseErr) {
+                console.error(`Failed to parse FMI response for ${longName}:`, parseErr);
+              }
             })
-            .catch((err: unknown) => {
-              const message = err instanceof Error ? err.message : String(err);
-              app.debug(`Failed to fetch weather data for ${longName}: ${message}`);
+            .catch((err: Error) => {
+              app.debug(`Failed to fetch weather data for ${longName}: ${err.message}`);
+            })
+            .finally(() => {
+              clearTimeout(timeoutId);
+              pending--;
+              if (pending <= 0) {
+                isFetching = false;
+              }
             });
         });
       } else {
         app.debug("No own position, cannot fetch nearest stations' data");
       }
-    } catch (error: unknown) {
-      if (error instanceof Error) {
-        console.error('Error reading meteorological data:', error);
-      } else {
-        console.error('Error reading meteorological data:', String(error));
-      }
+    } catch (error) {
+      isFetching = false;
+      console.error('Error reading meteorological data:', error);
     }
-  }
+  };
 
-  return {
-    ...plugin,
-    start,
-    stop,
-    schema,
+  const plugin: SignalKPlugin = {
+    id: 'signalk-net-weather-finland',
+    name: 'Signal K Net Weather Finland',
+    description: 'Finnish Meteorological Institute coastal weather station data for Signal K',
+    schema: {
+      type: 'object',
+      properties: {
+        updateWeather: {
+          type: 'integer',
+          default: 10,
+          minimum: 10,
+          title: 'How often weather station data is fetched (in minutes)',
+        },
+        numberOfStations: {
+          type: 'integer',
+          default: 3,
+          minimum: 1,
+          maximum: 51,
+          title: 'Number of nearest weather stations to monitor',
+        },
+      },
+    },
+    start(options: PluginOptions): void {
+      app.debug('Signal K Net Weather Finland started');
+      updateWeather = Math.max(options.updateWeather, 10);
+      numberOfStations = Math.min(Math.max(options.numberOfStations, 1), 51);
+      interval = setInterval(readMeteo, intervalTime);
+      readMeteo();
+    },
+    stop(): void {
+      if (interval !== null) {
+        clearInterval(interval);
+        interval = null;
+      }
+      isFetching = false;
+      app.debug('Signal K Net Weather Finland stopped');
+    },
     _test: {
       degrees_to_radians,
       C_to_K,
@@ -408,6 +349,8 @@ function createPlugin(app: AppApi) {
       stations,
     },
   };
+
+  return plugin;
 }
 
 export = createPlugin;

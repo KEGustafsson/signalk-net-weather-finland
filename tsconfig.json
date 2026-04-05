@@ -5,8 +5,9 @@
     "moduleResolution": "Node",
     "strict": true,
     "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
@@ -19,7 +20,6 @@
   ],
   "exclude": [
     "dist",
-    "build",
     "node_modules"
   ]
 }
