@@ -1,0 +1,13 @@
+src/
+test/
+.github/
+.vscode/
+node_modules/
+eslint.config.js
+tsconfig.json
+package-lock.json
+*.tgz
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
