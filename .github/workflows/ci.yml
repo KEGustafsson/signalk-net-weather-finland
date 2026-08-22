@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Weekly, so `npm audit` is re-run against newly published advisories
+    # even when nothing is pushed.
+    - cron: '0 5 * * 1'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # `npm test` invokes `node --test test/**/*.js`; the glob is expanded by
+        # the test runner itself, which requires Node 21 or later.
+        node: ['22.x', '24.x']
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+          # No package-lock.json is committed, so neither `npm ci` nor
+          # setup-node's built-in npm cache can be used here.
+
+      - run: npm install
+
+      # Runs eslint over test/ and `tsc --noEmit` over src/.
+      - run: npm run lint
+
+      # Builds dist/ first, then runs the suite against the built output.
+      - run: npm test
+
+  audit:
+    name: audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22.x'
+
+      # `npm audit` needs a lockfile; install generates one.
+      - run: npm install
+
+      - run: npm run audit-check

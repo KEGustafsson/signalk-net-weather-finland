@@ -1,5 +1,7 @@
 # Signal K Weather Station Plugin
 
+[![CI](https://github.com/KEGustafsson/signalk-net-weather-finland/actions/workflows/ci.yml/badge.svg)](https://github.com/KEGustafsson/signalk-net-weather-finland/actions/workflows/ci.yml)
+
 This plugin fetches weather data from Finnish Meteorological Institute coastal weather stations for Signal K. It automatically selects nearby stations, providing weather updates for maritime navigation.
 
 ## Features
@@ -59,7 +61,9 @@ Plugin settings:
 
 ### Prerequisites
 
-- Node.js 18 or later (uses native `fetch`)
+- Node.js 18 or later to run the plugin (uses native `fetch`)
+- Node.js 21 or later to run the test suite (`npm test` relies on the
+  test runner expanding `test/**/*.js` itself)
 
 ### Setup
 
@@ -78,6 +82,20 @@ npm test            # Build and run tests (Node built-in test runner)
 npm run lint        # Run linter (ESLint + TypeScript typecheck)
 npm run audit-check # Check for vulnerabilities
 ```
+
+### Continuous Integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push to
+`main`, on every pull request, and weekly on a schedule:
+
+- **test** -- `npm run lint` (ESLint + `tsc --noEmit`) and `npm test` (build,
+  then the Node test-runner suite) on Node 22 and 24. The test script relies on
+  the test runner's own glob expansion, which needs Node 21 or later.
+- **audit** -- `npm run audit-check` (`npm audit --audit-level=moderate`). The
+  weekly schedule re-runs it against newly published advisories.
+
+No `package-lock.json` is committed, so CI uses `npm install` rather than
+`npm ci`.
 
 ### Project Structure
 
