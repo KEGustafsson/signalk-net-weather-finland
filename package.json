@@ -6,7 +6,9 @@
   "types": "dist/index.d.ts",
   "files": [
     "dist/",
+    "docs/screenshots/",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
@@ -22,6 +24,12 @@
     "signalk-node-server-plugin",
     "signalk-category-weather"
   ],
+  "signalk": {
+    "screenshots": [
+      "./docs/screenshots/station-data.png",
+      "./docs/screenshots/plugin-config.png"
+    ]
+  },
   "repository": "https://github.com/KEGustafsson/signalk-net-weather-finland",
   "author": "Karl-Erik Gustafsson",
   "license": "MIT",

@@ -1,6 +1,18 @@
 # Signal K Weather Station Plugin
 
+[![CI](https://github.com/KEGustafsson/signalk-net-weather-finland/actions/workflows/ci.yml/badge.svg)](https://github.com/KEGustafsson/signalk-net-weather-finland/actions/workflows/ci.yml)
+
 This plugin fetches weather data from Finnish Meteorological Institute coastal weather stations for Signal K. It automatically selects nearby stations, providing weather updates for maritime navigation.
+
+## Screenshots
+
+Live observations from the nearest stations in the Signal K data browser:
+
+![Station data in the Signal K data browser](docs/screenshots/station-data.png)
+
+Plugin configuration:
+
+![Plugin configuration](docs/screenshots/plugin-config.png)
 
 ## Features
 
@@ -59,7 +71,9 @@ Plugin settings:
 
 ### Prerequisites
 
-- Node.js 18 or later (uses native `fetch`)
+- Node.js 18 or later to run the plugin (uses native `fetch`)
+- Node.js 21 or later to run the test suite (`npm test` relies on the
+  test runner expanding `test/**/*.js` itself)
 
 ### Setup
 
@@ -79,6 +93,24 @@ npm run lint        # Run linter (ESLint + TypeScript typecheck)
 npm run audit-check # Check for vulnerabilities
 ```
 
+### Continuous Integration
+
+Two workflows run on every push and pull request:
+
+- [`signalk-ci.yml`](.github/workflows/signalk-ci.yml) calls the canonical
+  Signal K plugin CI workflow from `SignalK/signalk-server`, which builds and
+  tests the plugin on Linux x64, Linux arm64, macOS and Windows against Node 22
+  and 24. armv7/Cerbo GX emulation and the Signal K server integration test are
+  off by default and can be switched on per-run from the Actions tab via
+  `workflow_dispatch`. armv7 is off because it runs Node 20, and `npm test`
+  needs Node 21 or later (see Prerequisites).
+- [`ci.yml`](.github/workflows/ci.yml) covers what the shared workflow doesn't:
+  ESLint, `tsc --noEmit` and `npm audit`. The audit also runs weekly, so newly
+  published advisories surface without a push.
+
+No `package-lock.json` is committed, so CI installs with `npm install` rather
+than `npm ci`.
+
 ### Project Structure
 
 ```
@@ -88,6 +120,7 @@ src/
 test/
   plugin-runtime.test.js   # Comprehensive test suite
   tooling.test.js          # Build artifact verification
+docs/screenshots/   # Listing images, referenced by signalk.screenshots
 dist/               # Compiled output (gitignored)
 ```
 
