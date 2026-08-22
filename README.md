@@ -4,6 +4,16 @@
 
 This plugin fetches weather data from Finnish Meteorological Institute coastal weather stations for Signal K. It automatically selects nearby stations, providing weather updates for maritime navigation.
 
+## Screenshots
+
+Live observations from the nearest stations in the Signal K data browser:
+
+![Station data in the Signal K data browser](docs/screenshots/station-data.png)
+
+Plugin configuration:
+
+![Plugin configuration](docs/screenshots/plugin-config.png)
+
 ## Features
 
 - Fetches data from the nearest Finnish Meteorological Institute coastal weather stations
@@ -85,17 +95,21 @@ npm run audit-check # Check for vulnerabilities
 
 ### Continuous Integration
 
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push to
-`main`, on every pull request, and weekly on a schedule:
+Two workflows run on every push and pull request:
 
-- **test** -- `npm run lint` (ESLint + `tsc --noEmit`) and `npm test` (build,
-  then the Node test-runner suite) on Node 22 and 24. The test script relies on
-  the test runner's own glob expansion, which needs Node 21 or later.
-- **audit** -- `npm run audit-check` (`npm audit --audit-level=moderate`). The
-  weekly schedule re-runs it against newly published advisories.
+- [`signalk-ci.yml`](.github/workflows/signalk-ci.yml) calls the canonical
+  Signal K plugin CI workflow from `SignalK/signalk-server`, which builds and
+  tests the plugin on Linux x64, Linux arm64, macOS and Windows against Node 22
+  and 24. armv7/Cerbo GX emulation and the Signal K server integration test are
+  off by default and can be switched on per-run from the Actions tab via
+  `workflow_dispatch`. armv7 is off because it runs Node 20, and `npm test`
+  needs Node 21 or later (see Prerequisites).
+- [`ci.yml`](.github/workflows/ci.yml) covers what the shared workflow doesn't:
+  ESLint, `tsc --noEmit` and `npm audit`. The audit also runs weekly, so newly
+  published advisories surface without a push.
 
-No `package-lock.json` is committed, so CI uses `npm install` rather than
-`npm ci`.
+No `package-lock.json` is committed, so CI installs with `npm install` rather
+than `npm ci`.
 
 ### Project Structure
 
@@ -106,6 +120,7 @@ src/
 test/
   plugin-runtime.test.js   # Comprehensive test suite
   tooling.test.js          # Build artifact verification
+docs/screenshots/   # Listing images, referenced by signalk.screenshots
 dist/               # Compiled output (gitignored)
 ```
 

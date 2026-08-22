@@ -1,3 +1,10 @@
+# Static checks and dependency auditing.
+#
+# Building and testing the plugin is handled by signalk-ci.yml, which runs the
+# canonical Signal K plugin CI across Linux x64, Linux arm64, macOS and Windows.
+# This workflow covers only what that one doesn't: linting, type-checking and
+# `npm audit`.
+
 name: CI
 
 on:
@@ -18,31 +25,22 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: test (node ${{ matrix.node }})
+  lint:
+    name: lint
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # `npm test` invokes `node --test test/**/*.js`; the glob is expanded by
-        # the test runner itself, which requires Node 21 or later.
-        node: ['22.x', '24.x']
     steps:
       - uses: actions/checkout@v5
 
       - uses: actions/setup-node@v5
         with:
-          node-version: ${{ matrix.node }}
+          node-version: '22.x'
           # No package-lock.json is committed, so neither `npm ci` nor
           # setup-node's built-in npm cache can be used here.
 
       - run: npm install
 
-      # Runs eslint over test/ and `tsc --noEmit` over src/.
+      # ESLint over test/, then `tsc --noEmit` over src/.
       - run: npm run lint
-
-      # Builds dist/ first, then runs the suite against the built output.
-      - run: npm test
 
   audit:
     name: audit
